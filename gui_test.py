@@ -11,7 +11,7 @@ from structures import *
 class EditingMode(Enum):
     DEFAULT = auto()
     DELETING_ELEMENT = auto()
-    ADDING_EDGE = auto()
+    CONNECTING = auto()
 
 
 class DragAndDropArea(tk.Canvas):
@@ -20,14 +20,13 @@ class DragAndDropArea(tk.Canvas):
         self.active = None
         self.active_text = None
         self.default_color = 'red'
+        self.selecting_color = '#638ae6'  # синий
+        self.edge_color = '#ab7738'
         self.selected_items = list()
         self.editing_mode = EditingMode.DEFAULT
         self.vertex_size = 100
         self.created_vertices = list()
         self.shift_length = 120
-        #  answer = askstring(title="Настройка связи вершин", parent=self,
-        #                   prompt="Настройка связи вершин")
-        #  print(answer)
 
         # бинды на действия мыши
         self.bind('<ButtonPress-1>', self.get_item)
@@ -81,20 +80,10 @@ class DragAndDropArea(tk.Canvas):
                 self.active = item[0]
                 text = self.find_withtag(f"text_card {item[0]}")
                 self.active_text = text[0]
-            elif self.editing_mode == EditingMode.ADDING_EDGE:
+            elif self.editing_mode == EditingMode.CONNECTING:
                 # тут должна производиться процедура что как мы сюда попали то
                 # на шаре с его айди должен быть его индек в списке селектед айтемс
-                item = self.find_withtag('current&&card')[0]
-                if item not in self.selected_items:
-                    self.itemconfig(item, fill='#638ae6')
-                    self.selected_items.append(item)
-                    self.update_selection()
-                else:
-                    selection_mark = self.find_withtag(f"parent {item}")[0]
-                    self.delete(selection_mark)
-                    self.itemconfig(item, fill=self.default_color)
-                    self.selected_items.remove(item)
-                    self.update_selection()
+                self.connecting_selected_edges()
             else:
                 pass
 
@@ -126,6 +115,8 @@ class DragAndDropArea(tk.Canvas):
         tensions = self.find_withtag(f'card {tag}')
         for tension in tensions:
             bounded_cards = self.gettags(tension)
+            weight_edge = self.find_withtag(f"parent {tension}")[0]
+            bg_weight_edge = self.find_withtag(f"parent {weight_edge}")[0]
             card = bounded_cards[0].split()[-1]
             card2 = bounded_cards[1].split()[-1]
             x1, y1 = self.get_mid_point(card)
@@ -133,12 +124,12 @@ class DragAndDropArea(tk.Canvas):
 
             if directed:
                 shift = self.calculate_shift(x1, y1, x2, y2)
-                x_shift = shift[0]
-                y_shift = shift[1]
+                x_shift, y_shift, x_shift_weight, y_shift_weight, x_m, y_m = \
+                    shift[0], shift[1], shift[2], shift[3], shift[4], shift[5]
 
                 angle = self.calculate_angle(x1, y1, x2, y2)
-                x_shift_d = abs(math.cos(math.radians(90 - abs(angle))) * self.vertex_size/2)
-                y_shift_d = abs(math.cos(math.radians(abs(angle))) * self.vertex_size/2)
+                x_shift_d = abs(math.cos(math.radians(90 - abs(angle))) * self.vertex_size / 2)
+                y_shift_d = abs(math.cos(math.radians(abs(angle))) * self.vertex_size / 2)
 
                 if x2 <= x1 and y2 < y1:
                     x2 = x2 + x_shift_d
@@ -152,8 +143,10 @@ class DragAndDropArea(tk.Canvas):
                 if x2 < x1 and y2 >= y1:
                     x2 = x2 + x_shift_d
                     y2 = y2 - y_shift_d
-
                 self.coords(tension, x1, y1, x_shift, y_shift, x2, y2)
+
+                self.coords(weight_edge, x_m+x_shift_weight*0.55, y_m+y_shift_weight*0.55)
+                self.coords(bg_weight_edge, self.bbox(weight_edge))
                 self.lower(tension)
 
     # создание вершины
@@ -165,7 +158,7 @@ class DragAndDropArea(tk.Canvas):
         return reference
 
     # выстраивание связи между двумя гранями визуально
-    def bind_tension(self, card, another_card, directed=True):
+    def bind_tension(self, card, another_card, weight, directed=True):
         default_tag = 'edge'
         x1, y1 = self.get_mid_point(card)
         x2, y2 = self.get_mid_point(another_card)
@@ -175,20 +168,32 @@ class DragAndDropArea(tk.Canvas):
         shift = self.calculate_shift(x1, y1, x2, y2)
         x_shift = shift[0]
         y_shift = shift[1]
+        x_shift_d = shift[2]*0.6+shift[4]
+        y_shift_d = shift[3]*0.6+shift[5]
+        print(f"first: {x1, y1, x_shift, y_shift, x2, y2}")
         if directed:
-            reference = self.create_line(x1, y1,
-                                         x_shift,
-                                         y_shift, x2, y2, fill='blue', width=10,
-                                         tags=(tag1, tag2, default_tag), smooth=1, arrow=tk.LAST,
-                                         arrowshape=(30, 30, 10), )
+            line = self.create_line(x1, y1,
+                                    x_shift,
+                                    y_shift,
+                                    x2, y2,
+                                    fill=self.edge_color, width=10,
+                                    tags=(tag1, tag2, default_tag), smooth=1, arrow=tk.LAST,
+                                    arrowshape=(30, 30, 10), )
+            text_weight = self.create_text(x_shift_d, y_shift_d, text=weight, fill='black', tags=(f"parent {line}",),
+                                           font=f"Courier_new {int(self.vertex_size/3.7)} normal")
+
+            back_g = self.create_rectangle(self.bbox(text_weight),
+                                           fill=self.edge_color,
+                                           outline=self.edge_color, width=5, tags=(f"parent {text_weight}",))
+            self.tag_lower(back_g, text_weight)
             self.update_tension(card)
         else:
-            reference = self.create_line(x1, y1,
-                                         x_shift,
-                                         y_shift, x2, y2, fill='blue', width=10,
-                                         tags=(tag1, tag2, default_tag), )
+            line = self.create_line(x1, y1,
+                                    x_shift,
+                                    y_shift, x2, y2, fill='blue', width=10,
+                                    tags=(tag1, tag2, default_tag), )
 
-        self.lower(reference)
+        self.lower(line)
 
     # вычисление координат середины карточки отвечающей за вершину графа
     def get_mid_point(self, card):
@@ -210,8 +215,8 @@ class DragAndDropArea(tk.Canvas):
 
     def switch_mode(self, e):
         if self.editing_mode == EditingMode.DEFAULT:
-            self.editing_mode = EditingMode.ADDING_EDGE
-        elif self.editing_mode == EditingMode.ADDING_EDGE:
+            self.editing_mode = EditingMode.CONNECTING
+        elif self.editing_mode == EditingMode.CONNECTING:
             for item in self.selected_items:
                 self.delete(self.find_withtag(f"parent {item}")[0])
                 self.itemconfig(item, fill=self.default_color)
@@ -221,11 +226,14 @@ class DragAndDropArea(tk.Canvas):
     def delete_element(self, event=None):
         item = self.find_withtag('current')[0]
         self.delete(item)
-        text = self.find_withtag(f'text_card {item}')
-        self.delete(text)
-        tensions = self.find_withtag(f'card {item}')
-        for tent in tensions:
-            self.delete(tent)
+        try:
+            text = self.find_withtag(f'text_card {item}')
+            self.delete(text)
+            tensions = self.find_withtag(f'card {item}')
+            for tent in tensions:
+                self.delete(tent)
+        finally:
+            pass
 
     def create_vertex(self):
         x, y = self.winfo_pointerx() - self.winfo_rootx(), self.winfo_pointery() - self.winfo_rooty()
@@ -250,6 +258,22 @@ class DragAndDropArea(tk.Canvas):
                              text=f"{self.selected_items.index(vertex)}",
                              fill='black',
                              state=tk.DISABLED, tags=(f"selected", f"parent {vertex}",),)
+
+    def connecting_selected_edges(self):
+        item = self.find_withtag('current&&card')[0]
+        if item not in self.selected_items:
+            self.itemconfig(item, fill=self.selecting_color)
+            self.selected_items.append(item)
+            if len(self.selected_items) == 2:
+                answer = askstring(title="Настройка связи вершин", parent=self,
+                                   prompt="Настройка связи вершин")
+                self.bind_tension(self.selected_items[0], self.selected_items[1], answer[0])
+                for item in self.selected_items:
+                    self.itemconfig(item, fill=self.default_color)
+                self.selected_items.clear()
+        else:
+            self.itemconfig(item, fill=self.default_color)
+            self.selected_items.remove(item)
 
     @staticmethod
     def calculate_angle(x1, y1, x2, y2):
@@ -301,7 +325,20 @@ class DragAndDropArea(tk.Canvas):
                     x_shift = mid_line_x - x_shift_d
                     y_shift = mid_line_y - y_shift_d
 
-                return x_shift, y_shift
+                if x2 <= x1 and y2 < y1:
+                    x_shift_d = x_shift_d
+                    y_shift_d = (-1)*y_shift_d
+                if x2 > x1 and y2 <= y1:
+                    x_shift_d = x_shift_d
+                    y_shift_d = y_shift_d
+                if x2 >= x1 and y2 > y1:
+                    x_shift_d = (-1)*x_shift_d
+                    y_shift_d = y_shift_d
+                if x2 < x1 and y2 >= y1:
+                    x_shift_d = (-1)*x_shift_d
+                    y_shift_d = (-1)*y_shift_d
+
+                return x_shift, y_shift, x_shift_d, y_shift_d, mid_line_x, mid_line_y
 
 
 if __name__ == "__main__":

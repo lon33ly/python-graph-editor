@@ -14,6 +14,7 @@ class CustomDialog(simpledialog.Dialog):
         self.prompt = prompt
         self.minvalue = minvalue
         self.maxvalue = maxvalue
+        self.answer_type = ''
 
         self.initialvalue = initialvalue
 
@@ -40,15 +41,29 @@ class CustomDialog(simpledialog.Dialog):
 
     def buttonbox(self):
         box = tk.Frame(self)
-        w = tk.Button(box, text=DIRECTED, width=14, command=self.ok, default=tk.ACTIVE)
+        w = tk.Button(box, text=DIRECTED, width=14, command=lambda x=DIRECTED: self.button_down(x), default=tk.ACTIVE)
         w.pack(side=tk.LEFT, padx=5, pady=5)
-        w = tk.Button(box, text=UNDIRECTED, width=14, command=self.cancel)
+        w = tk.Button(box, text=UNDIRECTED, width=14, command=lambda x=UNDIRECTED: self.button_down(x))
         w.pack(side=tk.LEFT, padx=5, pady=5)
 
-        self.bind("<Return>", self.ok)
-        self.bind("<Escape>", self.cancel)
+        # self.bind("<Return>", self.ok)
+        # self.bind("<Escape>", self.cancel)
 
         box.pack()
+
+    def button_down(self, x):
+        self.answer_type = x
+        if not self.validate():
+            self.initial_focus.focus_set()  # put focus back
+            return
+
+        self.withdraw()
+        self.update_idletasks()
+
+        try:
+            self.apply()
+        finally:
+            self.cancel()
 
     def validate(self):
         try:
@@ -100,7 +115,7 @@ class _QueryString(CustomDialog):
         return entry
 
     def getresult(self):
-        return self.entry.get()
+        return self.entry.get(), self.answer_type
 
 
 def askstring(title, prompt, **kw):
