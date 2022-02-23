@@ -49,6 +49,7 @@ class DragAndDropArea(tk.Canvas):
         # бинды на клавиатуру
         # добавить обработку на русской и не русской раскладке и в разном написании капосом и не капсом
         self.bind('<KeyPress-s>', self.switch_mode)
+        self.bind('<KeyPress-p>', self.make_adj_matrix)
 
         # меню
         self.vertex_menu = tk.Menu(self, tearoff=0)
@@ -280,13 +281,13 @@ class DragAndDropArea(tk.Canvas):
                 self.delete(tension)
                 for weight in self.find_withtag(self.weight_tag+str(tension)):
                     self.delete(weight)
-                    self.delete(self.find_withtag(self.weight_bg_tag+str(weight)))
+                    self.delete(self.find_withtag(self.weight_bg_tag+str(weight))[0])
 
         elif self.edge_tag in tags_of_element:
             self.delete(element)
             for weight in self.find_withtag(self.weight_tag + str(element)):
                 self.delete(weight)
-                self.delete(self.find_withtag(self.weight_bg_tag + str(weight)))
+                self.delete(self.find_withtag(self.weight_bg_tag + str(weight))[0])
 
     def update_status_bar(self):
         if self.editing_mode == EditingMode.CONNECTING:
@@ -312,7 +313,6 @@ class DragAndDropArea(tk.Canvas):
     # соединение выбранных двух вершин в режиме выделения
     def connecting_selected_edges(self):
         vertex = self.find_withtag(f'current&&{self.vertex_tag}')[0]
-        print(vertex)
         if vertex not in self.selected_vertices:
             self.itemconfig(vertex, fill=self.selecting_color)
             self.selected_vertices.append(vertex)
@@ -347,7 +347,7 @@ class DragAndDropArea(tk.Canvas):
 
         return angle
 
-    # метод высчитывания сдвига для построение точки отклонения направленного ребра
+    # метод высчитывания сдвига для построения точки отклонения направленного ребра
     def calculate_shift(self, x1, y1, x2, y2):
         mid_line_x = (x1 + x2) / 2
         mid_line_y = (y1 + y2) / 2
@@ -372,6 +372,32 @@ class DragAndDropArea(tk.Canvas):
 
         return mid_line_x+x_shift_d, mid_line_y+y_shift_d, x_shift_d, y_shift_d, mid_line_x, mid_line_y
 
+    def make_adj_matrix(self, e):
+        vertices_list = self.find_withtag(self.vertex_tag)
+        edges_list = self.find_withtag(self.edge_tag)
+        pair_list = list()  # list: [vertex, text on vertex]
+        n = len(vertices_list)
+        adj = [[0] * n for i in range(n)]
+
+        for vertex in vertices_list:
+            pair_list.append([vertex, self.itemcget(self.find_withtag(self.vertex_text_tag+str(vertex))[0], "text")])
+        for vertex in vertices_list:
+            edges = self.find_withtag(self.vertex_tag+str(vertex))  # список связей в которых участвует эта вершина
+            for edge in edges:
+                tags = self.gettags(edge)
+                vertex1 = int(tags[0].replace(self.vertex_tag, ""))
+                vertex2 = int(tags[1].replace(self.vertex_tag, ""))
+                index1 = vertices_list.index(vertex1)
+                index2 = vertices_list.index(vertex2)
+                weight = int(self.itemcget(self.find_withtag(self.weight_tag+str(edge))[0], 'text'))
+                if tags[3] == 'directed':
+                    adj[index1][index2] = weight
+                elif tags[3] == 'undirected':
+                    adj[index1][index2] = weight
+                    adj[index2][index1] = weight
+
+        return adj
+
 
 if __name__ == "__main__":
     window = tk.Tk()
@@ -383,3 +409,8 @@ if __name__ == "__main__":
     area.focus_set()
     window.mainloop()
 
+# 1. добавить валидацию на инт значение у веса грани.
+# 2. начать интегрировать алгоритмы
+# 3. сделать импорт из файла в виде графа
+# 4. сделать сохранение текущего графа в отдельный файл с сохранением координат всех элементов
+# 5. сделать help кнопку для вызова списка горячих клавиш
