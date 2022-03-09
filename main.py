@@ -2,6 +2,7 @@ import tkinter as tk
 import math
 import constants
 from dialog import askstring
+from labs import BranchAndBound
 from tkinter import simpledialog
 from enum import Enum, auto
 from constants import *
@@ -27,20 +28,20 @@ class DragAndDropArea(tk.Canvas):
         self.shift_length = 80
         self.count_vertices = 0
 
-        # colors
+        # цвета
         self.edge_weight_text_color = 'white'
         self.default_color = 'red'
         self.selecting_color = '#638ae6'  # синий
         self.edge_color = '#ab7738'  # зеленый
 
-        # default tags for elements
+        # стандартные tags
         self.edge_tag = 'edge'
         self.vertex_tag = 'vertex'
         self.vertex_text_tag = 'vertex_text'
         self.weight_bg_tag = 'weight_bg'
         self.weight_tag = 'weight'
 
-        # bind actions to mouse
+        # действия для мыши (бинды)
         self.bind('<ButtonPress-1>', self.get_item)
         self.bind('<B1-Motion>', self.move_active)
         self.bind('<ButtonRelease-1>', self.set_none)
@@ -102,6 +103,7 @@ class DragAndDropArea(tk.Canvas):
         except IndexError:
             print('Никакой элемент не был нажат')
 
+    # перемещение нажатой вершины
     def move_active(self, event):
         if self.active is not None:
             coords = self.coords(self.active)
@@ -219,6 +221,7 @@ class DragAndDropArea(tk.Canvas):
 
             self.lower(line)
 
+    # проверка на наличие текущей связи при создании новой
     def check_unique_tensions(self, tag1, tag2):
         directed, undirected = True, True
         for tension in self.find_withtag(tag1):
@@ -236,6 +239,7 @@ class DragAndDropArea(tk.Canvas):
 
         return directed, undirected
 
+    # создание элемента фон для значения веса вершины
     def make_bg_weight(self, text_weight):
         back_g = self.create_rectangle(self.bbox(text_weight),
                                        fill=self.edge_color, state=tk.DISABLED,
@@ -289,6 +293,7 @@ class DragAndDropArea(tk.Canvas):
                 self.delete(weight)
                 self.delete(self.find_withtag(self.weight_bg_tag + str(weight))[0])
 
+    # обновление статуса в случае смены режима взаимодействия
     def update_status_bar(self):
         if self.editing_mode == EditingMode.CONNECTING:
             self.itemconfig(self.status_show, fill=self.selecting_color, text='соединение')
@@ -323,7 +328,6 @@ class DragAndDropArea(tk.Canvas):
                     edge_type = True
                 else:
                     edge_type = False
-                    print("Undirected")
 
                 self.bind_tension(self.selected_vertices[0], self.selected_vertices[1], answer[0], directed=edge_type)
                 for vertex in self.selected_vertices:
@@ -372,6 +376,8 @@ class DragAndDropArea(tk.Canvas):
 
         return mid_line_x+x_shift_d, mid_line_y+y_shift_d, x_shift_d, y_shift_d, mid_line_x, mid_line_y
 
+    # демонстрационная функция для вывода матрицы смежности и запуска по ней алгоритма для решения
+    # задачи коммивояжера
     def make_adj_matrix(self, e):
         vertices_list = self.find_withtag(self.vertex_tag)
         edges_list = self.find_withtag(self.edge_tag)
@@ -396,6 +402,12 @@ class DragAndDropArea(tk.Canvas):
                     adj[index1][index2] = weight
                     adj[index2][index1] = weight
 
+        for i in adj:
+            print(i)
+
+        bab = BranchAndBound()
+        bab.print_solution(adj)
+
         return adj
 
 
@@ -408,9 +420,3 @@ if __name__ == "__main__":
     # нужно сделать фокусировку чтобы работало биндинг кнопок клавиатуры (клавиши)
     area.focus_set()
     window.mainloop()
-
-# 1. добавить валидацию на инт значение у веса грани.
-# 2. начать интегрировать алгоритмы
-# 3. сделать импорт из файла в виде графа
-# 4. сделать сохранение текущего графа в отдельный файл с сохранением координат всех элементов
-# 5. сделать help кнопку для вызова списка горячих клавиш
