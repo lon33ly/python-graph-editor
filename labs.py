@@ -1,144 +1,135 @@
-import math
+class TreeElement:
+    def __init__(self):
+        # будет содержать tuple (нач. вершина, кон. вершина,
+        # H оценки)
+        self.left = None
+        self.right = None
+
+
+class TestMatrices:
+    m1 = [[0, 3, 5, 4, 5, 3, 27],
+          [3, 0, 4, 19, 2, 5, 15],
+          [5, 4, 0, 3, 4, 5, 4],
+          [4, 19, 3, 0, 21, 4, 26],
+          [5, 2, 4, 21, 0, 18, 5],
+          [3, 5, 5, 4, 18, 0, 26],
+          [27, 15, 4, 26, 5, 26, 0]]
+
+    m2 = [[0, 1, 1, 7],
+          [1, 0, 20, 1],
+          [1, 20, 0, 1],
+          [7, 1, 1, 0]]
+
+    m3 = [[0, 1, 6, 3],
+        [1, 0, 1, 9],
+        [6, 1, 0, 1],
+        [3, 9, 1, 0]]
 
 
 class BranchAndBound:
-    def __init__(self):
-        self.maxsize = float('inf')
-        self.N = int()
-        self.final_path = [None] * (self.N + 1)
-        self.final_res = self.maxsize
+    def __init__(self, adj: list):
+        self.max_value = float('inf')
+        self.n = len(adj)
+        self.adj = self.prepare_adj_matrix(adj)
+        self.H = 0
 
-    def print_solution(self, adj):
-        self.tsp(adj)
-        print("Минимальная стоимость :", self.final_res)
-        print("Пройденный путь : ", end=' ')
-        for i in range(self.N + 1):
-            print(self.final_path[i], end=' ')
+        # будет хранить tuple вида index_i, index_j, mark
+        # для нулей
+        self.zeros_and_marks = list()
 
-    # функция для копирования временного решения для финального решения
-    def copy_to_final(self, curr_path):
-        self.final_path[:self.N + 1] = curr_path[:]
-        self.final_path[self.N] = curr_path[0]
+    # подготавливаем матрицу
+    # меняем нули на бесконечность, расширяем ее на 1
+    # в обе стороны для хранения di и dj
+    def prepare_adj_matrix(self, adj):
+        for i in range(self.n):
+            for j in range(self.n):
+                if j == self.n-1:
+                    adj[i].append(self.max_value)
+            adj[i][i] = self.max_value
+        adj.append([self.max_value for i in range(self.n+1)])
 
-    # функция для поиска минимальной стоимости ребра имея на конце вершину i
-    def first_min(self, adj, i):
-        minimal = self.maxsize
-        for k in range(self.N):
-            if adj[i][k] < minimal and i != k:
-                minimal = adj[i][k]
+        return adj
 
-        return minimal
+    # ищем минимальные элементы в строках и выписываем
+    # их в ту же таблицу справа, т.к она расширена
+    def find_min_to_di(self):
+        for i in range(self.n):
+            minimum = self.max_value
+            for j in range(self.n):
+                if self.adj[i][j] < minimum:
+                    minimum = self.adj[i][j]
+            self.adj[i][self.n] = minimum
 
-    # функция для поиска второй минимальной стоимости ребра имея на конце вершину i
-    def second_min(self, adj, i):
-        first, second = self.maxsize, self.maxsize
-        for j in range(self.N):
-            if i == j:
+    # то же самое что и функция выше, только для столбцов
+    # и значения помещаются снизу
+    def find_min_to_dj(self):
+        for i in range(self.n):
+            minimum = self.max_value
+            for j in range(self.n):
+                if self.adj[j][i] < minimum:
+                    minimum = self.adj[j][i]
+            self.adj[self.n][i] = minimum
+
+    # редуцирование по строкам
+    def reduce_i(self):
+        for i in range(self.n):
+            for j in range(self.n):
+                self.adj[i][j] = self.adj[i][j] - self.adj[i][self.n]
+
+    # редуцирование по столбцам
+    def reduce_j(self):
+        for i in range(self.n):
+            for j in range(self.n):
+                self.adj[i][j] = self.adj[i][j] - self.adj[self.n][j]
+
+    # оценить все нули
+    def mark_zeros_all(self):
+        for i in range(self.n):
+            for j in range(self.n):
+                if self.adj[i][j] == 0:
+                    self.zeros_and_marks.append((i, j, self.mark_zeros(i, j)))
+
+    # вспомогательная функция для оценки всех нулей
+    def mark_zeros(self, ind, j):
+        # минимальный в строке с нулем
+        sample_row = self.adj[ind].copy()
+        sample_row.pop(j)
+        min_i = min(sample_row)
+        min_j = self.max_value
+        # минимальный в столбце с нулем
+        for i in range(self.n):
+            if i == ind:
                 continue
-            if adj[i][j] <= first:
-                second = first
-                first = adj[i][j]
+            if self.adj[i][j] < min_j:
+                min_j = self.adj[i][j]
 
-            elif (adj[i][j] <= second and
-                  adj[i][j] != first):
-                second = adj[i][j]
+        return min_i + min_j
 
-        return second
+    def sum_of_di_and_dj(self):
+        dj_sum = sum(self.adj[self.n][0:-1])
+        di_sum = 0
+        for i in range(self.n):
+            di_sum += self.adj[i][self.n]
 
-    # функция, что принимает как аргументы: curr_bound -> нижняя граница корня узла,
-    # curr_weight-> хранит вес пути как далеко,
-    # level-> текущий уровень пока движемся в поиске свободы дерева
-    # curr_path[] -> где решение будет находится
-    # которая, позже будет скопирована в final_path[]
-    def tsprec(self, adj, curr_bound, curr_weight,
-               level, curr_path, visited):
+        return di_sum + dj_sum
 
-        # базовый случай, когда мы достигли уровня N
-        # что означает, что мы покрыли все узлы один раз
+    def find_max_zero(self):
+        max_mark = max(self.zeros_and_marks, key=lambda pack: pack[2])
+        return max_mark
 
-        if level == self.N:
+    def calculate_root(self):
+        self.find_min_to_di()
+        self.reduce_i()
+        self.find_min_to_dj()
+        self.reduce_j()
+        self.sum_of_di_and_dj()
+        print(self.sum_of_di_and_dj())
 
-            # проверяем, есть ли ребро из
-            # последней вершина на пути к первой вершине
-            if adj[curr_path[level - 1]][curr_path[0]] != 0:
+    # должна быть рекурсивная функция которая бы принимала дугу
+    def tsp(self):
+        pass
 
-                # curr_res имеет общий вес
-                # решения, которое мы получили
-                curr_res = curr_weight + adj[curr_path[level - 1]][curr_path[0]]
-                if curr_res < self.final_res:
-                    self.copy_to_final(curr_path)
-                    self.final_res = curr_res
-            return
 
-        # для любого другого уровня итерация для всех вершин
-        # для рекурсивного построения дерева пространства поиска
-        for i in range(self.N):
-
-            # Рассмотрим следующую вершину, если она не такая же
-            # (диагональная запись в матрице смежности и
-            # не посещали уже)
-            if (adj[curr_path[level - 1]][i] != 0 and
-                    visited[i] is False):
-                temp = curr_bound
-                curr_weight += adj[curr_path[level - 1]][i]
-
-                # другое вычисление curr_bound
-                # для уровня 2 с других уровней
-                if level == 1:
-                    curr_bound -= ((self.first_min(adj, curr_path[level - 1]) +
-                                    self.first_min(adj, i)) / 2)
-                else:
-                    curr_bound -= ((self.second_min(adj, curr_path[level - 1]) +
-                                    self.first_min(adj, i)) / 2)
-
-                # curr_bound + curr_weight фактическая нижняя граница
-                # для узла, на который мы прибыли.
-                # Если текущая нижняя граница < final_res,
-                # нам нужно изучить узел дальше
-                if curr_bound + curr_weight < self.final_res:
-                    curr_path[level] = i
-                    visited[i] = True
-
-                    # вызов tsprec для следующего уровня
-                    self.tsprec(adj, curr_bound, curr_weight,
-                                level + 1, curr_path, visited)
-
-                # В противном случае мы должны обрезать узел, сбросив
-                # все изменения в curr_weight и curr_bound
-                curr_weight -= adj[curr_path[level - 1]][i]
-                curr_bound = temp
-
-                # Также сбрасываем посещаемый массив
-                visited = [False] * len(visited)
-                for j in range(level):
-                    if curr_path[j] != -1:
-                        visited[curr_path[j]] = True
-
-    # Эта функция устанавливает final_path
-    # tsp от Travelling salesman problem
-    def tsp(self, adj):
-        self.N = len(adj)
-        # Рассчитать начальную нижнюю границу для корневого узла
-        # по формуле 1/2 * (сумма первой минуты +
-        # вторая минута) для всех ребер. Также инициализируйте
-        # curr_path и посещенный массив
-        curr_bound = 0
-        curr_path = [-1] * (self.N + 1)
-        visited = [False] * self.N
-
-        # Вычислить начальную границу
-        for i in range(self.N):
-            curr_bound += (self.first_min(adj, i) +
-                           self.second_min(adj, i))
-
-        # Округление нижней границы до целого числа
-        curr_bound = math.ceil(curr_bound / 2)
-
-        # Мы начинаем с вершины 1, поэтому первая вершина
-        # в curr_path[] равен 0
-        visited[0] = True
-        curr_path[0] = 0
-
-        # Вызов tsprec для curr_weight
-        # равно 0 и уровень 1
-        self.tsprec(adj, curr_bound, 0, 1, curr_path, visited)
+if __name__ == '__main__':
+    for i in enumerate(TestMatrices.m1):
+        print(i)

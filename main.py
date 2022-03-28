@@ -1,8 +1,8 @@
 import tkinter as tk
 import math
+import json
 import constants
 from dialog import askstring
-from labs import BranchAndBound
 from tkinter import simpledialog
 from enum import Enum, auto
 from constants import *
@@ -24,7 +24,6 @@ class DragAndDropArea(tk.Canvas):
         self.selected_vertices = list()
         self.editing_mode = EditingMode.DEFAULT
         self.vertex_size = 100
-        self.created_vertices = list()
         self.shift_length = 80
         self.count_vertices = 0
 
@@ -51,6 +50,8 @@ class DragAndDropArea(tk.Canvas):
         # добавить обработку на русской и не русской раскладке и в разном написании капосом и не капсом
         self.bind('<KeyPress-s>', self.switch_mode)
         self.bind('<KeyPress-p>', self.make_adj_matrix)
+        self.bind('<KeyPress-m>', self.json_save)
+        self.bind('<KeyPress-l>', self.json_load)
 
         # меню
         self.vertex_menu = tk.Menu(self, tearoff=0)
@@ -69,6 +70,9 @@ class DragAndDropArea(tk.Canvas):
                          font=f"Courier_new {20} bold", anchor=tk.NW)
         self.status_show = self.create_text(10, 40, fill=self.edge_color, text="редактирование",
                                             font=f"Courier_new {20} bold", anchor=tk.NW)
+
+        # файл для сохранения объектов с канваса в json
+        self.json_file = 'canvas-items.json'
 
     # запуск меню в зависимости от нажатого элемента на экране
     def do_popup(self, event):
@@ -405,10 +409,34 @@ class DragAndDropArea(tk.Canvas):
         for i in adj:
             print(i)
 
-        bab = BranchAndBound()
-        bab.print_solution(adj)
-
         return adj
+
+    def json_save(self, event):
+        print(self.find_all())
+        with open(self.json_file, 'w') as f:
+            for item in self.find_all():
+                print(f"save {self.gettags(item)}")
+                print(json.dumps({
+                    'type': self.type(item),
+                    'coords': self.coords(item),
+                    'options': {key: val[-1] for key, val in self.itemconfig(item).items()}
+                }), file=f)
+
+    def json_load(self, event):
+        self.delete('all')
+        funcs = {
+            'line': self.create_line,
+            'oval': self.create_oval,
+            'rectangle': self.create_rectangle,
+            'text': self.create_text,
+        }
+        with open(self.json_file) as f:
+            for line in f:
+                item = json.loads(line)
+                if item['type'] in funcs:
+                    el = funcs[item['type']](item['coords'], **item['options'])
+                    print(self.gettags(el))
+                    print(self.itemconfig(el))
 
 
 if __name__ == "__main__":
