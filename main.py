@@ -39,6 +39,8 @@ class DragAndDropArea(tk.Canvas):
         self.vertex_text_tag = 'vertex_text'
         self.weight_bg_tag = 'weight_bg'
         self.weight_tag = 'weight'
+        self.id_tag = 'unique_id'
+        self.status_bar_tag = 'status_bar'
 
         # действия для мыши (бинды)
         self.bind('<ButtonPress-1>', self.get_item)
@@ -63,13 +65,18 @@ class DragAndDropArea(tk.Canvas):
 
         self.default_menu = tk.Menu(self, tearoff=0)
         self.default_menu.add_command(label="Создать вершину", command=self.create_vertex)
-        self.default_menu.add_command(label="Соеднить вершины")
+        self.default_menu.add_command(label="Соединить вершины")
 
         # отображение дополнительной информации
         self.create_text(10, 10, fill='black', text="текущий режим",
                          font=f"Courier_new {20} bold", anchor=tk.NW)
-        self.status_show = self.create_text(10, 40, fill=self.edge_color, text="редактирование",
-                                            font=f"Courier_new {20} bold", anchor=tk.NW)
+
+        self.create_text(10, 40,
+                         fill=self.edge_color,
+                         text="редактирование",
+                         font=f"Courier_new {20} bold",
+                         anchor=tk.NW,
+                         tags=(self.status_bar_tag, ))
 
         # файл для сохранения объектов с канваса в json
         self.json_file = 'canvas-items.json'
@@ -99,9 +106,10 @@ class DragAndDropArea(tk.Canvas):
         try:
             if self.editing_mode == EditingMode.DEFAULT:
                 vertex = self.find_withtag(f'current&&{self.vertex_tag}')
-                self.active = vertex[0]
-                text = self.find_withtag(self.vertex_text_tag+str(self.active))
-                self.active_text = text[0]
+                self.active = self.get_last_tag(vertex[0])
+                print(self.active)
+                text = self.find_withtag(self.vertex_text_tag+self.active)
+                self.active_text = self.get_last_tag(text[0])
             elif self.editing_mode == EditingMode.CONNECTING:
                 self.connecting_selected_edges()
         except IndexError:
@@ -110,7 +118,11 @@ class DragAndDropArea(tk.Canvas):
     # перемещение нажатой вершины
     def move_active(self, event):
         if self.active is not None:
-            coords = self.coords(self.active)
+            element = self.find_withtag(self.active)
+            element = element[0]
+            text_of_element = self.find_withtag(self.active_text)
+            text_of_element = text_of_element[0]
+            coords = self.coords(element)
             width = coords[2] - coords[0]  # x2-x1
             height = coords[1] - coords[3]  # y1-y2
 
@@ -121,8 +133,8 @@ class DragAndDropArea(tk.Canvas):
             txt_x = event.x
             txt_y = event.y
 
-            self.coords(self.active, x1, y1, x2, y2)
-            self.coords(self.active_text, txt_x, txt_y)
+            self.coords(element, x1, y1, x2, y2)
+            self.coords(text_of_element, txt_x, txt_y)
             try:
                 self.update_tension(self.active)
             except IndexError:
@@ -130,11 +142,17 @@ class DragAndDropArea(tk.Canvas):
 
     # обновление линии которая связывает вершины
     def update_tension(self, tag):
-        tensions = self.find_withtag(self.vertex_tag+str(tag))
+        tensions = self.find_withtag(self.vertex_tag+tag)
+        print('\n\n\n'+str(tensions)+'\n\n\n')
         for tension in tensions:
             bounded_cards = self.gettags(tension)
-            weight_edge = self.find_withtag(self.weight_tag+str(tension))[0]
-            bg_weight_edge = self.find_withtag(self.weight_bg_tag+str(weight_edge))[0]
+            print(f"bc {bounded_cards}")
+            # weight_edge = self.find_withtag(self.weight_tag+str(tension))[0]
+            weight_edge = self.find_withtag(self.weight_tag + self.get_last_tag(tension))[0]
+            print(weight_edge)
+            # bg_weight_edge = self.find_withtag(self.weight_bg_tag+str(weight_edge))[0]
+            bg_weight_edge = self.find_withtag(self.weight_bg_tag + self.get_last_tag(weight_edge))[0]
+            print(bg_weight_edge)
             vertex1 = bounded_cards[0].replace(self.vertex_tag, '')
             vertex2 = bounded_cards[1].replace(self.vertex_tag, '')
             x1, y1 = self.get_mid_point(vertex1)
@@ -176,13 +194,17 @@ class DragAndDropArea(tk.Canvas):
         x1, y1 = x, y
         x2, y2 = x + width, y + height
         oval = self.create_oval(x1, y1, x2, y2, fill=color, tags=(self.vertex_tag,))
+        uid = self.id_tag+str(oval)
+        self.addtag_withtag(uid, oval)
 
-        return oval
+        return uid
 
     # выстраивание связи между двумя гранями визуально
     def bind_tension(self, vertex, another_vertex, weight, directed=True):
-        x1, y1 = self.get_mid_point(vertex)
-        x2, y2 = self.get_mid_point(another_vertex)
+        unpacked_vertex = self.find_withtag(vertex)[0]
+        unpacked_another_vertex = self.find_withtag(another_vertex)[0]
+        x1, y1 = self.get_mid_point(unpacked_vertex)
+        x2, y2 = self.get_mid_point(unpacked_another_vertex)
         tag1 = self.vertex_tag+str(vertex)
         tag2 = self.vertex_tag+str(another_vertex)
         shift = self.calculate_shift(x1, y1, x2, y2)
@@ -201,11 +223,15 @@ class DragAndDropArea(tk.Canvas):
                                     tags=(tag1, tag2, self.edge_tag, 'directed'), smooth=1, arrow=tk.LAST,
                                     arrowshape=(30, 30, 10), )
 
-            text_weight = self.create_text(x_shift_d, y_shift_d, text=weight, state=tk.DISABLED,
-                                           fill='black', tags=(self.weight_tag + str(line),),
-                                           font=f"Courier_new {int(self.vertex_size / 3.7)} normal")
+            self.addtag_withtag(self.id_tag+str(line), line)
 
-            back_g = self.make_bg_weight(text_weight)
+            text_weight = self.create_text(x_shift_d, y_shift_d, text=weight, state=tk.DISABLED,
+                                           fill='black', tags=(self.weight_tag + self.id_tag+str(line),),
+                                           font=f"Courier_new {int(self.vertex_size / 3.7)} normal")
+            new_text_weight_tag = self.id_tag + str(text_weight)
+            self.addtag_withtag(self.id_tag + str(text_weight), text_weight)
+
+            back_g = self.make_bg_weight(new_text_weight_tag)
             self.tag_lower(back_g, text_weight)
             self.update_tension(vertex)
 
@@ -214,12 +240,15 @@ class DragAndDropArea(tk.Canvas):
         if not directed and unique_answer[1]:
             line = self.create_line(x1, y1, x2, y2, fill=self.edge_color, width=10,
                                     tags=(tag1, tag2, self.edge_tag, 'undirected'), )
+            self.addtag_withtag(self.id_tag + str(line), line)
 
             text_weight = self.create_text((x1+x2)/2, (y1+y2)/2, text=weight, state=tk.DISABLED,
-                                           fill='black', tags=(self.weight_tag + str(line),),
+                                           fill='black', tags=(self.weight_tag + self.id_tag + str(line),),
                                            font=f"Courier_new {int(self.vertex_size / 3.7)} normal")
+            self.addtag_withtag(self.id_tag + str(text_weight), text_weight)
 
-            back_g = self.make_bg_weight(text_weight)
+            new_text_weight_tag = self.id_tag + str(text_weight)
+            back_g = self.make_bg_weight(new_text_weight_tag)
             self.tag_lower(back_g, text_weight)
             self.update_tension(vertex)
 
@@ -249,7 +278,7 @@ class DragAndDropArea(tk.Canvas):
                                        fill=self.edge_color, state=tk.DISABLED,
                                        outline=self.edge_color, width=5,
                                        tags=(self.weight_bg_tag + str(text_weight),))
-
+        self.addtag_withtag(self.id_tag+str(back_g), back_g)
         return back_g
 
     # вычисление координат середины карточки отвечающей за вершину графа
@@ -281,28 +310,29 @@ class DragAndDropArea(tk.Canvas):
         element = self.find_withtag('current')[0]
         tags_of_element = self.gettags(element)
         if self.vertex_tag in tags_of_element:
+            text = self.find_withtag(self.vertex_text_tag+self.get_last_tag(element))[0]
+            tensions = self.find_withtag(self.vertex_tag + self.get_last_tag(element))
             self.delete(element)
-            text = self.find_withtag(self.vertex_text_tag+str(element))[0]
             self.delete(text)
-            tensions = self.find_withtag(self.vertex_tag+str(element))
             for tension in tensions:
-                self.delete(tension)
-                for weight in self.find_withtag(self.weight_tag+str(tension)):
+                for weight in self.find_withtag(self.weight_tag+self.get_last_tag(tension)):
+                    self.delete(self.find_withtag(self.weight_bg_tag+self.get_last_tag(weight))[0])
                     self.delete(weight)
-                    self.delete(self.find_withtag(self.weight_bg_tag+str(weight))[0])
+                self.delete(tension)
 
         elif self.edge_tag in tags_of_element:
-            self.delete(element)
-            for weight in self.find_withtag(self.weight_tag + str(element)):
+            for weight in self.find_withtag(self.weight_tag + self.get_last_tag(element)):
+                self.delete(self.find_withtag(self.weight_bg_tag + self.get_last_tag(weight))[0])
                 self.delete(weight)
-                self.delete(self.find_withtag(self.weight_bg_tag + str(weight))[0])
+            self.delete(element)
 
     # обновление статуса в случае смены режима взаимодействия
     def update_status_bar(self):
+        status_bar = self.find_withtag(self.status_bar_tag)[0]
         if self.editing_mode == EditingMode.CONNECTING:
-            self.itemconfig(self.status_show, fill=self.selecting_color, text='соединение')
+            self.itemconfig(status_bar, fill=self.selecting_color, text='соединение')
         elif self.editing_mode == EditingMode.DEFAULT:
-            self.itemconfig(self.status_show, fill=self.edge_color, text='редактирование')
+            self.itemconfig(status_bar, fill=self.edge_color, text='редактирование')
 
     # создание вершины с текстом и фигуркой
     def create_vertex(self):
@@ -314,10 +344,11 @@ class DragAndDropArea(tk.Canvas):
 
         self.count_vertices += 1
         vertex = self.draw_vertex(x, y, self.vertex_size, self.vertex_size, self.default_color)
-        self.create_text(tx, ty, font=f"Courier_new {int(self.vertex_size/2)} normal",
-                         text=f"{self.count_vertices}",
-                         fill='black',
-                         state=tk.DISABLED, tags=(self.vertex_text_tag+str(vertex),))
+        text = self.create_text(tx, ty, font=f"Courier_new {int(self.vertex_size/2)} normal",
+                                text=f"{self.count_vertices}",
+                                fill='black',
+                                state=tk.DISABLED, tags=(self.vertex_text_tag+vertex,))
+        self.addtag_withtag(self.id_tag+str(text), text)
 
     # соединение выбранных двух вершин в режиме выделения
     def connecting_selected_edges(self):
@@ -332,8 +363,9 @@ class DragAndDropArea(tk.Canvas):
                     edge_type = True
                 else:
                     edge_type = False
-
-                self.bind_tension(self.selected_vertices[0], self.selected_vertices[1], answer[0], directed=edge_type)
+                vertex1 = self.get_last_tag(self.selected_vertices[0])
+                vertex2 = self.get_last_tag(self.selected_vertices[1])
+                self.bind_tension(vertex1, vertex2, answer[0], directed=edge_type)
                 for vertex in self.selected_vertices:
                     self.itemconfig(vertex, fill=self.default_color)
                 self.selected_vertices.clear()
@@ -411,6 +443,13 @@ class DragAndDropArea(tk.Canvas):
 
         return adj
 
+    def get_last_tag(self, element: int):
+        tags = self.gettags(element)
+        if tags[-1] == 'current':
+            return tags[-2]
+
+        return tags[-1]
+
     def json_save(self, event):
         print(self.find_all())
         with open(self.json_file, 'w') as f:
@@ -430,6 +469,7 @@ class DragAndDropArea(tk.Canvas):
             'rectangle': self.create_rectangle,
             'text': self.create_text,
         }
+
         with open(self.json_file) as f:
             for line in f:
                 item = json.loads(line)
